@@ -43,11 +43,59 @@ async function guard<T>(
   }
 }
 
+/**
+ * Server-authoritative vote timers. Keyed by room, each entry remembers the
+ * deadline it was scheduled for so repeated broadcasts (e.g. on every vote) do
+ * NOT reset the countdown — only an actual change of deadline reschedules.
+ */
+const matchTimers = new Map<string, { deadline: number; handle: NodeJS.Timeout }>();
+
+function clearRoomTimer(roomId: string): void {
+  const existing = matchTimers.get(roomId);
+  if (existing) {
+    clearTimeout(existing.handle);
+    matchTimers.delete(roomId);
+  }
+}
+
+/** Reconcile the scheduled timer with the room's current deadline. */
+function reconcileTimer(io: IO, roomId: string): void {
+  const room = roomManager.getRoom(roomId);
+  const deadline = room?.currentDeadline ?? null;
+  const existing = matchTimers.get(roomId);
+
+  if (!deadline) {
+    clearRoomTimer(roomId);
+    return;
+  }
+  if (existing && existing.deadline === deadline) return; // unchanged — keep it
+  if (existing) clearTimeout(existing.handle);
+
+  const handle = setTimeout(
+    () => {
+      matchTimers.delete(roomId);
+      try {
+        const { completed } = roomManager.autoAdvance(roomId);
+        emitState(io, roomId); // also reschedules the next match's timer
+        if (completed) announceCompletion(io, roomId, completed);
+      } catch {
+        /* room gone or no active match — nothing to do */
+      }
+    },
+    Math.max(0, deadline - Date.now()),
+  );
+  matchTimers.set(roomId, { deadline, handle });
+}
+
 /** Broadcast the authoritative snapshot to everyone in a room. */
 export function emitState(io: IO, roomId: string): void {
   const room = roomManager.getRoom(roomId);
-  if (!room) return;
+  if (!room) {
+    clearRoomTimer(roomId);
+    return;
+  }
   io.to(roomId).emit('room:state', roomManager.snapshot(roomId));
+  reconcileTimer(io, roomId);
 }
 
 export function registerRoomHandlers(io: IO, socket: IOSocket): void {
@@ -96,8 +144,12 @@ export function registerRoomHandlers(io: IO, socket: IOSocket): void {
       if (pid) {
         const room = roomManager.leaveRoom(payload.roomId, pid);
         await socket.leave(payload.roomId);
-        if (room) emitState(io, payload.roomId);
-        else io.to(payload.roomId).emit('room:closed', { reason: 'Room closed.' });
+        if (room) {
+          emitState(io, payload.roomId);
+        } else {
+          clearRoomTimer(payload.roomId);
+          io.to(payload.roomId).emit('room:closed', { reason: 'Room closed.' });
+        }
       }
       socket.data.roomId = undefined;
       socket.data.participantId = undefined;
@@ -140,6 +192,12 @@ export function registerRoomHandlers(io: IO, socket: IOSocket): void {
     guard(io, payload.roomId, ack, () =>
       roomManager.dedupe(payload.roomId, actor(socket)),
     ),
+  );
+
+  socket.on('room:setVoteTimer', (payload, ack) =>
+    guard(io, payload.roomId, ack, () => {
+      roomManager.setVoteTimer(payload.roomId, actor(socket), payload.seconds);
+    }),
   );
 
   // ---- Tournament control -------------------------------------------------

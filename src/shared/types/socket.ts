@@ -65,6 +65,12 @@ export interface ClientToServerEvents {
     ack: (res: Ack<{ removed: number }>) => void,
   ) => void;
 
+  /** Admin sets (or clears with null) the per-match vote time limit. Lobby only. */
+  'room:setVoteTimer': (
+    payload: { roomId: string; seconds: number | null },
+    ack: (res: Ack) => void,
+  ) => void;
+
   // --- Tournament control (admin only) ---
   'tournament:start': (
     payload: { roomId: string },

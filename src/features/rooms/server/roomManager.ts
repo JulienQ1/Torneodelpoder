@@ -65,6 +65,8 @@ export class RoomManager {
       lastActivityAt: now,
       currentVotes: {},
       pendingTie: false,
+      voteDurationSeconds: null,
+      currentDeadline: null,
     };
 
     this.rooms.set(roomId, room);
@@ -171,6 +173,20 @@ export class RoomManager {
     return { removed };
   }
 
+  /** Configure the per-match vote timer (lobby only). null disables it. */
+  setVoteTimer(roomId: string, actorId: string, seconds: number | null): Room {
+    const room = this.requireAdmin(roomId, actorId);
+    if (room.phase !== 'lobby') {
+      throw new RoomError('The timer can only be changed before the tournament starts.');
+    }
+    if (seconds !== null && (!Number.isFinite(seconds) || seconds < 5 || seconds > 600)) {
+      throw new RoomError('Pick a timer between 5 and 600 seconds, or turn it off.');
+    }
+    room.voteDurationSeconds = seconds;
+    this.touch(room);
+    return room;
+  }
+
   // ---- Tournament control ------------------------------------------------
 
   start(roomId: string, actorId: string): Room {
@@ -189,6 +205,7 @@ export class RoomManager {
     room.phase = 'in-progress';
     room.currentVotes = {};
     room.pendingTie = false;
+    this.refreshDeadline(room);
     this.touch(room);
     return room;
   }
@@ -222,11 +239,30 @@ export class RoomManager {
     completed: { matchId: string; winnerId: string } | null;
   } {
     const room = this.requireAdmin(roomId, actorId);
-    const match = this.requireActiveMatch(room);
+    return this.resolveByVotes(room);
+  }
 
+  /**
+   * Advance driven by the vote timer expiring (no admin action). Same rules as
+   * a manual advance: a tie still parks in pending-tie for the admin to resolve.
+   */
+  autoAdvance(roomId: string): {
+    room: Room;
+    completed: { matchId: string; winnerId: string } | null;
+  } {
+    const room = this.requireRoom(roomId);
+    return this.resolveByVotes(room);
+  }
+
+  private resolveByVotes(room: Room): {
+    room: Room;
+    completed: { matchId: string; winnerId: string } | null;
+  } {
+    const match = this.requireActiveMatch(room);
     const { a, b } = this.tally(room);
     if (a === b) {
       room.pendingTie = true;
+      room.currentDeadline = null; // voting is closed while a tie is pending
       this.touch(room);
       return { room, completed: null };
     }
@@ -275,6 +311,8 @@ export class RoomManager {
         voters: Object.keys(room.participants).length,
       },
       awaitingTieBreak: room.pendingTie,
+      voteDurationSeconds: room.voteDurationSeconds,
+      deadline: room.currentDeadline,
     };
   }
 
@@ -308,8 +346,24 @@ export class RoomManager {
     if (room.tournament.status === 'completed') {
       room.phase = 'finished';
     }
+    this.refreshDeadline(room);
     this.touch(room);
     return { room, completed: { matchId, winnerId } };
+  }
+
+  /**
+   * Set the current match's voting deadline based on the configured timer.
+   * Cleared whenever there is no live, votable match (finished / tie / no timer).
+   */
+  private refreshDeadline(room: Room): void {
+    const hasLiveMatch =
+      room.phase === 'in-progress' &&
+      !room.pendingTie &&
+      Boolean(room.tournament?.currentMatchId);
+    room.currentDeadline =
+      hasLiveMatch && room.voteDurationSeconds
+        ? Date.now() + room.voteDurationSeconds * 1000
+        : null;
   }
 
   private tally(room: Room): { a: number; b: number } {

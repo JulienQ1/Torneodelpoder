@@ -32,6 +32,10 @@ export interface Room {
   currentVotes: Record<string, 'A' | 'B'>;
   /** True when the admin tried to advance a tied match and must resolve it. */
   pendingTie: boolean;
+  /** Optional per-match voting time limit in seconds (null = no timer). */
+  voteDurationSeconds: number | null;
+  /** Epoch-ms deadline for the current match (null when no timer is running). */
+  currentDeadline: number | null;
 }
 
 /** What a client is allowed to see. Excludes nothing sensitive today, but the
@@ -48,6 +52,10 @@ export interface RoomSnapshot {
   voteTally: { a: number; b: number; total: number; voters: number };
   /** Whether the current match is tied and awaiting admin resolution. */
   awaitingTieBreak: boolean;
+  /** Configured per-match time limit in seconds (null = disabled). */
+  voteDurationSeconds: number | null;
+  /** Epoch-ms deadline for the current match (null when no timer is running). */
+  deadline: number | null;
 }
 
 export interface TieBreakRequest {

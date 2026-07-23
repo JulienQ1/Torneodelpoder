@@ -69,6 +69,40 @@ export function Lobby({
 
         {isAdmin && (
           <Card className="space-y-3 p-4">
+            <div>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+                Vote timer
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {(
+                  [
+                    { label: 'Off', value: null },
+                    { label: '15s', value: 15 },
+                    { label: '30s', value: 30 },
+                    { label: '60s', value: 60 },
+                  ] as const
+                ).map((opt) => {
+                  const active = snapshot.voteDurationSeconds === opt.value;
+                  return (
+                    <button
+                      key={opt.label}
+                      onClick={() => actions.setVoteTimer(opt.value).catch(() => undefined)}
+                      className={
+                        active
+                          ? 'rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white'
+                          : 'rounded-lg bg-slate-800 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-700'
+                      }
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-1.5 text-xs text-slate-500">
+                When set, each match auto-advances when the timer runs out.
+              </p>
+            </div>
+
             <div className="flex flex-wrap gap-2">
               <Button
                 size="sm"

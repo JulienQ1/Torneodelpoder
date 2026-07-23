@@ -124,6 +124,51 @@ describe('RoomManager', () => {
     expect(mgr.getRoom(room.id)).toBeUndefined();
   });
 
+  it('configures and validates the vote timer (lobby only)', () => {
+    const { room, participantId: admin } = mgr.createRoom('Alice');
+    mgr.setVoteTimer(room.id, admin, 30);
+    expect(mgr.getRoom(room.id)!.voteDurationSeconds).toBe(30);
+    expect(() => mgr.setVoteTimer(room.id, admin, 2)).toThrow(RoomError); // too short
+    expect(() => mgr.setVoteTimer(room.id, admin, 9999)).toThrow(RoomError); // too long
+    mgr.setVoteTimer(room.id, admin, null); // off
+    expect(mgr.getRoom(room.id)!.voteDurationSeconds).toBeNull();
+  });
+
+  it('sets a deadline when a timer is configured and clears it on a tie', () => {
+    const { room, participantId: admin } = mgr.createRoom('Alice');
+    const { participantId: bob } = mgr.joinRoom(room.code, 'Bob');
+    mgr.setVoteTimer(room.id, admin, 30);
+    mgr.addSongs(room.id, admin, songs(2));
+    mgr.start(room.id, admin);
+    expect(mgr.snapshot(room.id).deadline).toBeGreaterThan(Date.now());
+
+    // Force a tie → deadline cleared, pending tie set.
+    mgr.castVote(room.id, admin, 'A');
+    mgr.castVote(room.id, bob, 'B');
+    mgr.autoAdvance(room.id);
+    expect(mgr.snapshot(room.id).awaitingTieBreak).toBe(true);
+    expect(mgr.snapshot(room.id).deadline).toBeNull();
+  });
+
+  it('auto-advances by current votes without an admin actor', () => {
+    const { room, participantId: admin } = mgr.createRoom('Alice');
+    const { participantId: bob } = mgr.joinRoom(room.code, 'Bob');
+    mgr.setVoteTimer(room.id, admin, 15);
+    mgr.addSongs(room.id, admin, songs(4));
+    mgr.start(room.id, admin);
+    mgr.castVote(room.id, admin, 'A');
+    mgr.castVote(room.id, bob, 'A');
+    const { completed } = mgr.autoAdvance(room.id);
+    expect(completed).not.toBeNull();
+  });
+
+  it('has no deadline when the timer is off', () => {
+    const { room, participantId: admin } = mgr.createRoom('Alice');
+    mgr.addSongs(room.id, admin, songs(4));
+    mgr.start(room.id, admin);
+    expect(mgr.snapshot(room.id).deadline).toBeNull();
+  });
+
   it('de-duplicates staged songs', () => {
     const { room, participantId: admin } = mgr.createRoom('Alice');
     const list = songs(3);

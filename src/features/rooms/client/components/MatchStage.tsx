@@ -7,6 +7,7 @@ import { Button, Card } from '@/shared/components/ui';
 import { currentMatch, currentRound, progress, song } from '@/features/tournament/client/selectors';
 import { Contender } from './Contender';
 import { TieBreakPanel } from './TieBreakPanel';
+import { CountdownTimer } from './CountdownTimer';
 
 export function MatchStage({
   snapshot,
@@ -67,13 +68,16 @@ export function MatchStage({
             {round?.isSuddenDeath ? 'Win or go home' : 'Cast your vote'}
           </h2>
         </div>
-        <div className="text-right text-xs text-slate-500">
-          Match {prog.done + 1} of {prog.total}
-          <div className="mt-1 h-1.5 w-32 overflow-hidden rounded-full bg-slate-800">
-            <div
-              className="h-full rounded-full bg-brand-500 transition-all"
-              style={{ width: `${(prog.done / prog.total) * 100}%` }}
-            />
+        <div className="flex items-center gap-3">
+          {snapshot.deadline && !tied && <CountdownTimer deadline={snapshot.deadline} />}
+          <div className="text-right text-xs text-slate-500">
+            Match {prog.done + 1} of {prog.total}
+            <div className="mt-1 h-1.5 w-32 overflow-hidden rounded-full bg-slate-800">
+              <div
+                className="h-full rounded-full bg-brand-500 transition-all"
+                style={{ width: `${(prog.done / prog.total) * 100}%` }}
+              />
+            </div>
           </div>
         </div>
       </div>
