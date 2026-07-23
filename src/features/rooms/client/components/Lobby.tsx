@@ -21,6 +21,28 @@ export function Lobby({
   const { actions } = controller;
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [customValue, setCustomValue] = useState('');
+  const [timerError, setTimerError] = useState<string | null>(null);
+
+  const PRESETS = [15, 30, 60];
+  const isCustomTimer =
+    snapshot.voteDurationSeconds !== null &&
+    !PRESETS.includes(snapshot.voteDurationSeconds);
+
+  async function applyCustomTimer() {
+    const n = Number(customValue);
+    if (!Number.isInteger(n) || n < 5 || n > 600) {
+      setTimerError('Enter a whole number of seconds between 5 and 600.');
+      return;
+    }
+    setTimerError(null);
+    try {
+      await actions.setVoteTimer(n);
+      setCustomValue('');
+    } catch (e) {
+      setTimerError((e as Error).message);
+    }
+  }
 
   async function start() {
     setStarting(true);
@@ -98,8 +120,41 @@ export function Lobby({
                   );
                 })}
               </div>
+
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  type="number"
+                  min={5}
+                  max={600}
+                  inputMode="numeric"
+                  placeholder="Custom"
+                  value={customValue}
+                  onChange={(e) => setCustomValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') applyCustomTimer();
+                  }}
+                  className={
+                    'h-9 w-24 rounded-lg border bg-slate-900/70 px-3 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 ' +
+                    (isCustomTimer ? 'border-brand-500' : 'border-slate-700 focus:border-brand-500')
+                  }
+                />
+                <span className="text-sm text-slate-500">sec</span>
+                <button
+                  onClick={applyCustomTimer}
+                  className="h-9 rounded-lg bg-slate-800 px-3 text-sm font-medium text-slate-200 transition hover:bg-slate-700"
+                >
+                  Set
+                </button>
+                {isCustomTimer && (
+                  <span className="text-xs text-brand-300">
+                    Current: {snapshot.voteDurationSeconds}s
+                  </span>
+                )}
+              </div>
+              {timerError && <p className="mt-1.5 text-xs text-rose-300">{timerError}</p>}
+
               <p className="mt-1.5 text-xs text-slate-500">
-                When set, each match auto-advances when the timer runs out.
+                When set, each match auto-advances when the timer runs out (5–600s).
               </p>
             </div>
 
