@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  @apply bg-slate-950 text-slate-100 antialiased;
+  background-image:
+    radial-gradient(60rem 60rem at 10% -10%, rgba(124, 58, 237, 0.15), transparent 60%),
+    radial-gradient(50rem 50rem at 100% 0%, rgba(236, 72, 153, 0.12), transparent 55%);
+  background-attachment: fixed;
+}
+
+/* Thin, unobtrusive scrollbars for the song list panels. */
+.scroll-slim::-webkit-scrollbar {
+  width: 8px;
+}
+.scroll-slim::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-slate-700;
+}
+.scroll-slim::-webkit-scrollbar-track {
+  background: transparent;
+}

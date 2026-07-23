@@ -1,0 +1,43 @@
+{
+  "name": "torneo-del-poder",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Modern web app for organizing real-time music tournaments with a Sudden Death preliminary round.",
+  "scripts": {
+    "postinstall": "prisma generate",
+    "dev": "tsx watch server/index.ts",
+    "build": "prisma generate && next build",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "start": "cross-env NODE_ENV=production tsx server/index.ts",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "clsx": "^2.1.1",
+    "nanoid": "^5.0.9",
+    "next": "15.5.21",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1",
+    "tailwind-merge": "^2.6.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "@types/react": "^19.0.7",
+    "@types/react-dom": "^19.0.3",
+    "autoprefixer": "^10.4.20",
+    "cross-env": "^7.0.3",
+    "postcss": "^8.5.1",
+    "prisma": "^6.19.3",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}
