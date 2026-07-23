@@ -17,12 +17,28 @@ export function RoomHeader({
 }) {
   const router = useRouter();
   const [copied, setCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  function inviteUrl(): string {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    return `${origin}/?join=${snapshot.code}`;
+  }
 
   async function copyCode() {
     try {
       await navigator.clipboard.writeText(snapshot.code);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard unavailable */
+    }
+  }
+
+  async function copyInviteLink() {
+    try {
+      await navigator.clipboard.writeText(inviteUrl());
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 1500);
     } catch {
       /* clipboard unavailable */
     }
@@ -50,6 +66,10 @@ export function RoomHeader({
           {copied ? 'Copied!' : 'Copy'}
         </span>
       </button>
+
+      <Button size="sm" variant="secondary" onClick={copyInviteLink}>
+        {linkCopied ? '✓ Link copied' : '🔗 Copy invite link'}
+      </Button>
 
       <div className="ml-auto flex items-center gap-3">
         <span
