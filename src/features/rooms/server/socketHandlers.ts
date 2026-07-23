@@ -7,6 +7,7 @@ import type {
 } from '@/shared/types/socket';
 import { ImportService } from '@/features/import/server/importService';
 import { ProviderError } from '@/features/import/server/provider';
+import { archiveRoom } from '@/features/persistence/server/tournamentArchive';
 import { RoomError, roomManager } from './roomManager';
 
 type IO = Server<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>;
@@ -199,6 +200,8 @@ function announceCompletion(
     io.to(roomId).emit('tournament:completed', {
       championId: room.tournament.championId,
     });
+    // Fire-and-forget snapshot to Postgres (no-op when persistence is disabled).
+    void archiveRoom(room);
   }
 }
 

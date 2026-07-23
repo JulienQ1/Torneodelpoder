@@ -156,7 +156,14 @@ export default function HomePage() {
         ))}
       </section>
 
-      <footer className="mt-16 text-xs text-slate-600">
+      <a
+        href="/history"
+        className="mt-10 text-sm font-medium text-slate-400 underline-offset-4 transition hover:text-brand-200 hover:underline"
+      >
+        View tournament history →
+      </a>
+
+      <footer className="mt-10 text-xs text-slate-600">
         Built with Next.js, Socket.IO & a provably fair bracket engine.
       </footer>
     </main>
