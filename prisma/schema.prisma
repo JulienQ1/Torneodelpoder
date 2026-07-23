@@ -1,0 +1,242 @@
+// Torneo del Poder — persistence schema.
+//
+// IMPORTANT: The live tournament runtime is intentionally IN-MEMORY (see
+// src/features/rooms/server/roomManager.ts). A running room is ephemeral and
+// vote-heavy, and keeping its canonical state in one process makes realtime
+// updates instant and race-free.
+//
+// This schema is the *persistence* layer that powers the additive future
+// features: user accounts, public tournaments, history, favourites, statistics,
+// custom rules, double elimination, OAuth, and Discord integration. Rooms are
+// snapshotted here when they finish (or periodically) rather than on every vote.
+//
+// To activate: set DATABASE_URL, run `npx prisma migrate dev`, and persist
+// finished tournaments from the RoomManager. Nothing in the game loop changes.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity (future: accounts + OAuth)
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String    @id @default(cuid())
+  // Simple auth to begin with: a nickname is enough to play. email/handle are
+  // optional so anonymous guests and registered users share one model.
+  handle        String?   @unique
+  email         String?   @unique
+  displayName   String
+  avatarUrl     String?
+  createdAt     DateTime  @default(now())
+
+  accounts      OAuthAccount[]
+  ownedRooms    Room[]         @relation("RoomOwner")
+  memberships   Participant[]
+  votes         Vote[]
+  favorites     FavoriteSong[]
+
+  @@index([createdAt])
+}
+
+// OAuth / Discord login providers (future: OAuth login, Discord integration).
+model OAuthAccount {
+  id                String  @id @default(cuid())
+  provider          String // "discord" | "google" | ...
+  providerAccountId String
+  userId            String
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Songs — the universal, source-agnostic contestant token
+// ---------------------------------------------------------------------------
+
+enum SongSource {
+  youtube
+  spotify
+}
+
+// A globally de-duplicated catalogue of songs (by source + native id), so
+// statistics ("most-voted song ever") and favourites work across tournaments.
+model Song {
+  id        String     @id @default(cuid())
+  source    SongSource
+  sourceId  String
+  title     String
+  artist    String
+  thumbnail String
+  duration  Int        @default(0)
+  url       String
+
+  entries   TournamentSong[]
+  favorites FavoriteSong[]
+
+  @@unique([source, sourceId])
+  @@index([title])
+}
+
+model FavoriteSong {
+  userId    String
+  songId    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  song      Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
+
+  @@id([userId, songId])
+}
+
+// ---------------------------------------------------------------------------
+// Rooms, participants, tournaments
+// ---------------------------------------------------------------------------
+
+enum RoomPhase {
+  lobby
+  in_progress
+  finished
+}
+
+enum TournamentFormat {
+  single_elimination
+  double_elimination // future
+}
+
+model Room {
+  id          String      @id @default(cuid())
+  code        String      @unique
+  title       String      @default("Music Tournament")
+  phase       RoomPhase   @default(lobby)
+  isPublic    Boolean     @default(false) // future: public tournaments
+  format      TournamentFormat @default(single_elimination)
+  // Flexible bag for custom tournament rules (seeding, vote timers, …) so new
+  // rule types don't require a migration.
+  rules       Json?
+
+  ownerId     String?
+  owner       User?       @relation("RoomOwner", fields: [ownerId], references: [id])
+
+  createdAt   DateTime    @default(now())
+  finishedAt  DateTime?
+
+  participants Participant[]
+  tournament   Tournament?
+  entries      TournamentSong[]
+
+  @@index([isPublic, finishedAt])
+  @@index([ownerId])
+}
+
+model Participant {
+  id       String  @id @default(cuid())
+  roomId   String
+  room     Room    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId   String?
+  user     User?   @relation(fields: [userId], references: [id])
+  nickname String
+  isAdmin  Boolean @default(false)
+  votes    Vote[]
+
+  @@index([roomId])
+}
+
+// The song roster of a specific room/tournament (join table with seed info).
+model TournamentSong {
+  id       String @id @default(cuid())
+  roomId   String
+  room     Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  songId   String
+  song     Song   @relation(fields: [songId], references: [id])
+  seed     Int? // future: seeding algorithms
+
+  matchesAsA Match[] @relation("SongA")
+  matchesAsB Match[] @relation("SongB")
+  wins       Match[] @relation("Winner")
+
+  @@unique([roomId, songId])
+  @@index([roomId])
+}
+
+model Tournament {
+  id                   String   @id @default(cuid())
+  roomId               String   @unique
+  room                 Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  entrantCount         Int
+  bracketSize          Int
+  suddenDeathMatches   Int
+  championSongId       String?
+  createdAt            DateTime @default(now())
+
+  rounds Round[]
+  matches Match[]
+
+  @@index([championSongId])
+}
+
+model Round {
+  id            String  @id @default(cuid())
+  tournamentId  String
+  tournament    Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  index         Int
+  name          String
+  isSuddenDeath Boolean @default(false)
+  matches       Match[]
+
+  @@unique([tournamentId, index])
+}
+
+enum TieBreak {
+  coin_flip
+  admin_choice
+}
+
+model Match {
+  id           String   @id @default(cuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  roundId      String
+  round        Round    @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  matchIndex   Int
+
+  songAId String?
+  songA   TournamentSong? @relation("SongA", fields: [songAId], references: [id])
+  songBId String?
+  songB   TournamentSong? @relation("SongB", fields: [songBId], references: [id])
+
+  votesA   Int      @default(0)
+  votesB   Int      @default(0)
+  winnerId String?
+  winner   TournamentSong? @relation("Winner", fields: [winnerId], references: [id])
+  tieBreak TieBreak?
+
+  votes Vote[]
+
+  @@index([tournamentId])
+  @@index([roundId])
+}
+
+// Individual votes retained for statistics; the live tally is computed
+// in-memory, this table is the durable audit trail.
+model Vote {
+  id            String   @id @default(cuid())
+  matchId       String
+  match         Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  participantId String
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id])
+  side          String // "A" | "B"
+  createdAt     DateTime @default(now())
+
+  // One vote per participant per match.
+  @@unique([matchId, participantId])
+  @@index([matchId])
+}
