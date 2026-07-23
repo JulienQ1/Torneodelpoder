@@ -216,12 +216,30 @@ Where each listed future feature plugs in, with no rewrite:
 | Spotify playlist import | Already stubbed in `SpotifyProvider.fetchPlaylist` (needs creds) |
 | New sources (SoundCloud…) | New `SongProvider` implementation |
 | User accounts / OAuth / Discord | `User`, `OAuthAccount` models + an auth adapter in transport |
-| Public tournaments / history | `Room.isPublic`, snapshot finished rooms to the DB |
+| Public tournaments | `Room.isPublic`; history is **implemented** (see below) |
 | Favourites / statistics | `FavoriteSong`, `Vote` audit trail, `Song` catalogue |
 | Custom rules | `Room.rules` JSON + rule strategies in the domain |
 | Double elimination | `Room.format` + a second bracket generator alongside `bracket.ts` |
 | Seeding algorithms | Replace the random seed distribution in `generateTournament` |
 | Horizontal scaling | Redis-backed `RoomManager` + Socket.IO Redis adapter |
+
+## 7a. Implemented follow-ups
+
+Three features build directly on the seams above:
+
+- **History / persistence.** On completion, `archiveRoom` snapshots the finished
+  room to Postgres via a pure, tested `buildArchivePayload` mapper. It is
+  fire-and-forget and gated on `DATABASE_URL`, so it never touches the vote loop
+  and the app runs unchanged without a database. `/history` reads it back.
+- **Per-match vote timer.** The `RoomManager` owns a per-match `deadline`
+  (refreshed as matches activate, cleared on ties/finish). A small server-side
+  timer service reconciles on each broadcast — crucially, it only reschedules
+  when the deadline *value* changes, so a vote never resets the countdown. On
+  expiry it calls `autoAdvance`, which resolves by current votes (a tie still
+  parks for the admin). The server is authoritative; the client countdown is
+  purely presentational.
+- **Audio preview.** `AudioPreview` embeds each provider's official iframe
+  player, so voters can hear a track before voting. No keys required.
 
 ## 8. Testing strategy
 

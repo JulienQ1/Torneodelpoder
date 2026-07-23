@@ -25,8 +25,14 @@ built from scratch with its own architecture and UI.
   or import a whole playlist (uses provider API keys when configured).
 - **Source-agnostic** — YouTube and Spotify songs are treated identically once
   imported; the tournament never cares where a song came from.
+- **In-match audio preview** — listen to each song via its native YouTube/
+  Spotify embed before voting (no API keys needed for playback).
+- **Optional vote timer** — the admin can set a 15/30/60s per-match limit;
+  the server auto-advances when it runs out (ties still go to the admin).
 - **Live bracket view** — a horizontally-scrolling bracket updates after every
   match, with Sudden Death shown as a distinct first column.
+- **Tournament history** — finished tournaments are snapshotted to Postgres
+  (when configured) and browsable at `/history`.
 - **Responsive** — designed mobile-first; works on phones and desktop.
 
 ---
