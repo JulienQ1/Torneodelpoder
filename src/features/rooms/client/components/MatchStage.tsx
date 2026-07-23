@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { RoomSnapshot } from '@/shared/types/room';
 import type { RoomController } from '../useRoomSocket';
 import { Button, Card } from '@/shared/components/ui';
@@ -23,6 +23,13 @@ export function MatchStage({
   const round = currentRound(t);
   const [myVote, setMyVote] = useState<'A' | 'B' | null>(null);
   const [busy, setBusy] = useState(false);
+  // Only one preview plays at a time; resets when the match changes.
+  const [previewSide, setPreviewSide] = useState<'A' | 'B' | null>(null);
+  const matchId = match?.id;
+  useEffect(() => {
+    setPreviewSide(null);
+    setMyVote(null);
+  }, [matchId]);
 
   if (!match) {
     return <Card className="p-8 text-center text-slate-400">Preparing the next match…</Card>;
@@ -92,6 +99,8 @@ export function MatchStage({
           disabled={tied}
           onVote={vote}
           accent="brand"
+          previewOpen={previewSide === 'A'}
+          onTogglePreview={() => setPreviewSide((s) => (s === 'A' ? null : 'A'))}
         />
         <div className="flex items-center justify-center">
           <span className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-sm font-black text-slate-400">
@@ -107,6 +116,8 @@ export function MatchStage({
           disabled={tied}
           onVote={vote}
           accent="pink"
+          previewOpen={previewSide === 'B'}
+          onTogglePreview={() => setPreviewSide((s) => (s === 'B' ? null : 'B'))}
         />
       </div>
 

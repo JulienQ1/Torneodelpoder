@@ -3,6 +3,7 @@
 import type { Song } from '@/shared/types/song';
 import { cn } from '@/shared/lib/cn';
 import { DurationBadge, SourceBadge, Thumb } from './SongThumb';
+import { AudioPreview } from './AudioPreview';
 
 /** One side of a matchup: artwork, metadata, vote button, and live share. */
 export function Contender({
@@ -14,6 +15,8 @@ export function Contender({
   disabled,
   onVote,
   accent,
+  previewOpen,
+  onTogglePreview,
 }: {
   song: Song;
   side: 'A' | 'B';
@@ -23,6 +26,8 @@ export function Contender({
   disabled: boolean;
   onVote: (side: 'A' | 'B') => void;
   accent: 'brand' | 'pink';
+  previewOpen: boolean;
+  onTogglePreview: () => void;
 }) {
   const picked = myVote === side;
   const pct = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0;
@@ -38,6 +43,15 @@ export function Contender({
     >
       <div className="relative aspect-video w-full overflow-hidden bg-slate-800">
         <Thumb song={song} className="h-full w-full transition duration-300 group-hover:scale-105" />
+        <button
+          onClick={onTogglePreview}
+          className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition group-hover:opacity-100 focus:opacity-100"
+          aria-label={previewOpen ? 'Hide preview' : `Preview ${song.title}`}
+        >
+          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-slate-900 shadow-lg">
+            {previewOpen ? <PauseIcon /> : <PlayIcon />}
+          </span>
+        </button>
         <div className="absolute bottom-2 right-2">
           <DurationBadge seconds={song.duration} />
         </div>
@@ -68,22 +82,53 @@ export function Contender({
           </div>
         </div>
 
-        <button
-          onClick={() => onVote(side)}
-          disabled={disabled}
-          className={cn(
-            'mt-4 h-11 rounded-xl font-semibold transition',
-            'disabled:cursor-not-allowed disabled:opacity-50',
-            picked
-              ? accent === 'brand'
-                ? 'bg-brand-600 text-white'
-                : 'bg-pink-600 text-white'
-              : 'bg-slate-800 text-slate-100 hover:bg-slate-700',
-          )}
-        >
-          {picked ? 'Your pick ✓' : 'Vote'}
-        </button>
+        {previewOpen && (
+          <div className="mt-3 animate-fade-in">
+            <AudioPreview song={song} />
+          </div>
+        )}
+
+        <div className="mt-4 flex gap-2">
+          <button
+            onClick={onTogglePreview}
+            className="flex h-11 flex-none items-center gap-1.5 rounded-xl bg-slate-800 px-3 text-sm font-medium text-slate-200 transition hover:bg-slate-700"
+          >
+            {previewOpen ? <PauseIcon /> : <PlayIcon />}
+            {previewOpen ? 'Hide' : 'Listen'}
+          </button>
+          <button
+            onClick={() => onVote(side)}
+            disabled={disabled}
+            className={cn(
+              'h-11 flex-1 rounded-xl font-semibold transition',
+              'disabled:cursor-not-allowed disabled:opacity-50',
+              picked
+                ? accent === 'brand'
+                  ? 'bg-brand-600 text-white'
+                  : 'bg-pink-600 text-white'
+                : 'bg-slate-800 text-slate-100 hover:bg-slate-700',
+            )}
+          >
+            {picked ? 'Your pick ✓' : 'Vote'}
+          </button>
+        </div>
       </div>
     </div>
+  );
+}
+
+function PlayIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M8 5v14l11-7z" />
+    </svg>
+  );
+}
+
+function PauseIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M6 5h4v14H6zM14 5h4v14h-4z" />
+    </svg>
   );
 }
