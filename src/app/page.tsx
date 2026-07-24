@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, Card, Input } from '@/shared/components/ui';
 import { emitAck } from '@/features/rooms/client/socket';
@@ -13,6 +13,16 @@ export default function HomePage() {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState<'create' | 'join' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [invited, setInvited] = useState(false);
+
+  // Pre-fill the room code from an invite link (e.g. /?join=Q7X2).
+  useEffect(() => {
+    const join = new URLSearchParams(window.location.search).get('join');
+    if (join) {
+      setCode(join.toUpperCase().trim());
+      setInvited(true);
+    }
+  }, []);
 
   async function createRoom() {
     if (!nickname.trim()) return setError('Enter a nickname first.');
@@ -65,6 +75,12 @@ export default function HomePage() {
           balances the field, so there are never random byes.
         </p>
       </header>
+
+      {invited && (
+        <div className="mb-5 w-full rounded-xl border border-brand-700/50 bg-brand-900/30 px-4 py-3 text-center text-sm text-brand-100">
+          You’ve been invited to room <span className="font-mono font-bold tracking-widest">{code}</span> — just add a nickname and join!
+        </div>
+      )}
 
       <div className="grid w-full gap-6 sm:grid-cols-2">
         <Card className="p-6">
