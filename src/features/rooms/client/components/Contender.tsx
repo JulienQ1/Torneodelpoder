@@ -103,10 +103,24 @@ export function Contender({
         <div className="mb-1 flex items-center gap-2">
           <SourceBadge source={song.source} />
           {song.artist && (
-            <span className="truncate text-xs text-slate-400">{song.artist}</span>
+            <span
+              className={cn(
+                'truncate text-xs text-slate-400',
+                mediaHidden && 'select-none blur-sm',
+              )}
+            >
+              {song.artist}
+            </span>
           )}
         </div>
-        <h3 className="line-clamp-2 text-base font-semibold text-slate-100">{song.title}</h3>
+        <h3
+          className={cn(
+            'line-clamp-2 text-base font-semibold text-slate-100',
+            mediaHidden && 'select-none blur-sm',
+          )}
+        >
+          {song.title}
+        </h3>
 
         {/* Vote share — hidden for participants during suspense voting */}
         {showVotes && (
