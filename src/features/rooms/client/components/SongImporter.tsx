@@ -63,8 +63,8 @@ export function SongImporter({ onAddManual, onAddPlaylist }: Props) {
         </p>
       )}
       <p className="text-xs text-slate-500">
-        Single tracks work with no setup. Full playlist import uses the provider
-        API keys when configured.
+        Single tracks and YouTube playlists work with no setup. Spotify playlists
+        (and 100%-reliable YouTube import) use provider API keys when configured.
       </p>
     </div>
   );
