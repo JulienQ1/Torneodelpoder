@@ -34,8 +34,10 @@ build, plus a **`railway.json`** for Railway.
      ```
    - Without `DATABASE_URL` the app runs fine; `/history` simply shows an empty state.
 
-4. **(Optional) Playlist import keys** — set as service variables:
-   - `YOUTUBE_API_KEY` (full YouTube playlist import)
+4. **(Optional) Playlist import keys** — set as service variables (see
+   [Getting free API keys](#getting-free-api-keys) below for step-by-step):
+   - `YOUTUBE_API_KEY` (reliable, paginated YouTube playlist import — without it
+     a best-effort keyless scrape is used instead)
    - `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` (Spotify playlist import)
 
 That’s it — open the generated domain, create a room, and share the **invite
@@ -59,6 +61,54 @@ docker run -p 3000:3000 \
 
 The same image runs on Render (Web Service → Docker), Fly.io (`fly launch`
 against the Dockerfile), or any container host / VPS.
+
+---
+
+## Getting free API keys
+
+Both are **free** and unlock reliable playlist import. Single-track import and
+the whole live tournament work without them.
+
+### YouTube Data API key (`YOUTUBE_API_KEY`)
+
+Enables official, paginated YouTube playlist import (without it, a best-effort
+keyless page scrape is used, which can be rate-limited from cloud IPs). No
+billing/credit card required — it's covered by the free daily quota (~10,000
+units/day; a playlist import costs only a few units).
+
+1. Go to the **Google Cloud Console**: <https://console.cloud.google.com>
+2. Top bar → project selector → **New Project** (name it e.g. `Torneo`) →
+   **Create**, and make sure it's the selected project.
+3. Menu ☰ → **APIs & Services → Library** → search **"YouTube Data API v3"** →
+   open it → **Enable**.
+4. Menu ☰ → **APIs & Services → Credentials** → **+ Create credentials** →
+   **API key**. Copy the key (starts with `AIza…`).
+5. *(Recommended)* Click the key → under **API restrictions** choose
+   **Restrict key → YouTube Data API v3** → **Save**. (It's used server-side, so
+   application restrictions can stay off.)
+6. Add it to your host as `YOUTUBE_API_KEY` (on Railway: service → **Variables**
+   → **New Variable**), or to a local `.env`:
+   ```
+   YOUTUBE_API_KEY=AIza...your_key
+   ```
+
+Keep the key secret — never commit it; an environment variable is the right home.
+
+### Spotify credentials (`SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET`)
+
+Enables Spotify playlist import and richer track metadata. Also free.
+
+1. Go to the **Spotify Developer Dashboard**:
+   <https://developer.spotify.com/dashboard> and log in.
+2. **Create app** → give it any name/description. For **Redirect URI** enter any
+   valid URL (e.g. `http://localhost:3000`) — this app uses the Client
+   Credentials flow and doesn't rely on it. Accept the terms → **Save**.
+3. Open the app → **Settings** → copy the **Client ID** and **Client secret**.
+4. Add them as environment variables (Railway **Variables**, or local `.env`):
+   ```
+   SPOTIFY_CLIENT_ID=...your_client_id
+   SPOTIFY_CLIENT_SECRET=...your_client_secret
+   ```
 
 ---
 
