@@ -58,14 +58,19 @@ export class YouTubeProvider implements SongProvider {
     };
   }
 
+  /**
+   * Import a playlist. With an API key we use the official Data API (reliable,
+   * paginated). Without one we fall back to a best-effort, keyless scrape of the
+   * public playlist page — so users can import a playlist in one link with no
+   * setup. The scrape is unofficial and covers the first ~100 items.
+   */
   async fetchPlaylist(id: string): Promise<SongInput[]> {
-    if (!this.apiKey) {
-      throw new ProviderError(
-        'Importing a full YouTube playlist requires a YOUTUBE_API_KEY. ' +
-          'You can still paste individual video links.',
-      );
-    }
+    if (this.apiKey) return this.fetchPlaylistViaApi(id);
+    return this.fetchPlaylistKeyless(id);
+  }
 
+  private async fetchPlaylistViaApi(id: string): Promise<SongInput[]> {
+    const apiKey = this.apiKey!;
     const songs: SongInput[] = [];
     let pageToken: string | undefined;
 
@@ -74,7 +79,7 @@ export class YouTubeProvider implements SongProvider {
         part: 'snippet,contentDetails',
         maxResults: '50',
         playlistId: id,
-        key: this.apiKey,
+        key: apiKey,
       });
       if (pageToken) params.set('pageToken', pageToken);
 
@@ -129,6 +134,52 @@ export class YouTubeProvider implements SongProvider {
     return songs;
   }
 
+  /**
+   * Keyless import: fetch the public playlist page and parse the embedded
+   * `ytInitialData` for its videos. Unofficial and best-effort — covers the
+   * first page (~100 items) and may fail on some playlists (auto-generated
+   * mixes, region/consent walls). Falls back with a clear, actionable message.
+   */
+  private async fetchPlaylistKeyless(id: string): Promise<SongInput[]> {
+    const url = `https://www.youtube.com/playlist?list=${encodeURIComponent(id)}&hl=en`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15_000);
+    let html: string;
+    try {
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+            '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept-Language': 'en-US,en;q=0.9',
+          // Skip the EU consent interstitial so we get the real page.
+          cookie: 'CONSENT=YES+1',
+        },
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        throw new ProviderError('Could not open that YouTube playlist.');
+      }
+      html = await res.text();
+    } catch (err) {
+      if (err instanceof ProviderError) throw err;
+      throw new ProviderError(
+        'Could not reach YouTube to read that playlist. Paste individual video links instead.',
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+
+    const songs = parsePlaylistPage(html);
+    if (songs.length === 0) {
+      throw new ProviderError(
+        'Could not read that playlist automatically (it may be private, empty, or an ' +
+          'auto-generated mix). Paste individual video links, or set a YOUTUBE_API_KEY.',
+      );
+    }
+    return songs;
+  }
+
   /** Fill in durations via the videos endpoint (50 ids per call). */
   private async enrichDurations(songs: SongInput[]): Promise<void> {
     if (!this.apiKey) return;
@@ -150,4 +201,124 @@ export class YouTubeProvider implements SongProvider {
       for (const s of batch) s.duration = byId.get(s.sourceId) ?? 0;
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Keyless playlist parsing (pure — no I/O, unit-testable).
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract the balanced JSON object assigned to `ytInitialData` in a YouTube
+ * page's HTML, by brace-matching from the assignment (robust to nested braces
+ * and string escapes). Returns null when not found or unparseable.
+ */
+export function extractYtInitialData(html: string): unknown | null {
+  const markers = ['var ytInitialData =', 'ytInitialData"] =', 'ytInitialData =', 'ytInitialData=' ];
+  for (const marker of markers) {
+    const at = html.indexOf(marker);
+    if (at === -1) continue;
+    const start = html.indexOf('{', at);
+    if (start === -1) continue;
+    let depth = 0;
+    let inStr = false;
+    let esc = false;
+    for (let i = start; i < html.length; i++) {
+      const ch = html[i];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (ch === '\\') esc = true;
+        else if (ch === '"') inStr = false;
+      } else if (ch === '"') {
+        inStr = true;
+      } else if (ch === '{') {
+        depth++;
+      } else if (ch === '}') {
+        depth--;
+        if (depth === 0) {
+          try {
+            return JSON.parse(html.slice(start, i + 1));
+          } catch {
+            break; // try the next marker
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/** Recursively collect every value stored under `key` anywhere in a tree. */
+function collectByKey(node: unknown, key: string, out: unknown[] = []): unknown[] {
+  if (Array.isArray(node)) {
+    for (const v of node) collectByKey(v, key, out);
+  } else if (node && typeof node === 'object') {
+    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+      if (k === key) out.push(v);
+      collectByKey(v, key, out);
+    }
+  }
+  return out;
+}
+
+/**
+ * Parse a YouTube playlist page's HTML into songs (best-effort, keyless).
+ * Walks `ytInitialData` for `playlistVideoRenderer` entries.
+ */
+export function parsePlaylistPage(html: string): SongInput[] {
+  const data = extractYtInitialData(html);
+  if (!data) return [];
+
+  const renderers = collectByKey(data, 'playlistVideoRenderer') as Array<Record<string, unknown>>;
+  const seen = new Set<string>();
+  const songs: SongInput[] = [];
+
+  for (const r of renderers) {
+    const videoId = typeof r.videoId === 'string' ? r.videoId : undefined;
+    if (!videoId || seen.has(videoId)) continue;
+
+    const title = readText(r.title);
+    if (!title || title === 'Private video' || title === 'Deleted video') continue;
+
+    seen.add(videoId);
+    const channel = readText(r.shortBylineText) || readText(r.ownerText);
+    const parsed = splitTitle(title, channel);
+    songs.push({
+      title: parsed.title,
+      artist: parsed.artist,
+      source: 'youtube',
+      sourceId: videoId,
+      thumbnail: thumbFor(videoId, readThumbnail(r.thumbnail)),
+      duration: readLengthSeconds(r.lengthSeconds),
+      url: `https://www.youtube.com/watch?v=${videoId}`,
+    });
+  }
+  return songs;
+}
+
+/** Read YouTube's `{ runs: [{text}] }` / `{ simpleText }` text shapes. */
+function readText(node: unknown): string {
+  if (!node || typeof node !== 'object') return '';
+  const obj = node as Record<string, unknown>;
+  if (typeof obj.simpleText === 'string') return obj.simpleText;
+  if (Array.isArray(obj.runs)) {
+    return obj.runs
+      .map((run) => (run && typeof run === 'object' ? String((run as Record<string, unknown>).text ?? '') : ''))
+      .join('');
+  }
+  return '';
+}
+
+function readThumbnail(node: unknown): string | undefined {
+  const thumbs =
+    node && typeof node === 'object'
+      ? ((node as Record<string, unknown>).thumbnails as unknown)
+      : undefined;
+  if (!Array.isArray(thumbs) || thumbs.length === 0) return undefined;
+  const last = thumbs[thumbs.length - 1] as Record<string, unknown> | undefined;
+  return last && typeof last.url === 'string' ? last.url : undefined;
+}
+
+function readLengthSeconds(value: unknown): number {
+  const n = typeof value === 'string' ? Number(value) : NaN;
+  return Number.isFinite(n) ? n : 0;
 }
