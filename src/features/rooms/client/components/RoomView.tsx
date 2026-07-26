@@ -83,10 +83,14 @@ export function RoomView({ roomId }: { roomId: string }) {
         {snapshot.phase === 'in-progress' && snapshot.tournament && (
           <>
             <MatchStage snapshot={snapshot} controller={controller} isAdmin={isAdmin} />
-            <section>
-              <h3 className="mb-3 text-sm font-semibold text-slate-300">Bracket</h3>
-              <Bracket tournament={snapshot.tournament} />
-            </section>
+            {(isAdmin || snapshot.settings.bracketVisibleToAll) && (
+              <section>
+                <h3 className="mb-3 text-sm font-semibold text-slate-300">
+                  Bracket{!snapshot.settings.bracketVisibleToAll && isAdmin ? ' (admin)' : ''}
+                </h3>
+                <Bracket tournament={snapshot.tournament} />
+              </section>
+            )}
           </>
         )}
 

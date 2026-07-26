@@ -3,9 +3,11 @@ import type { Song } from '@/shared/types/song';
 import type {
   Participant,
   Room,
+  RoomSettings,
   RoomSnapshot,
   TieBreakRequest,
 } from '@/shared/types/room';
+import { DEFAULT_ROOM_SETTINGS } from '@/shared/types/room';
 import {
   completeMatch,
   generateTournament,
@@ -65,6 +67,9 @@ export class RoomManager {
       lastActivityAt: now,
       currentVotes: {},
       pendingTie: false,
+      revealed: false,
+      settings: { ...DEFAULT_ROOM_SETTINGS },
+      history: [],
       voteDurationSeconds: null,
       currentDeadline: null,
     };
@@ -187,6 +192,20 @@ export class RoomManager {
     return room;
   }
 
+  /** Update presentation settings (admin, any time). */
+  setSettings(roomId: string, actorId: string, partial: Partial<RoomSettings>): Room {
+    const room = this.requireAdmin(roomId, actorId);
+    const next = { ...room.settings };
+    if (typeof partial.hideVotes === 'boolean') next.hideVotes = partial.hideVotes;
+    if (typeof partial.hideMedia === 'boolean') next.hideMedia = partial.hideMedia;
+    if (typeof partial.bracketVisibleToAll === 'boolean') {
+      next.bracketVisibleToAll = partial.bracketVisibleToAll;
+    }
+    room.settings = next;
+    this.touch(room);
+    return room;
+  }
+
   // ---- Tournament control ------------------------------------------------
 
   start(roomId: string, actorId: string): Room {
@@ -205,6 +224,8 @@ export class RoomManager {
     room.phase = 'in-progress';
     room.currentVotes = {};
     room.pendingTie = false;
+    room.revealed = false;
+    room.history = [];
     this.refreshDeadline(room);
     this.touch(room);
     return room;
@@ -218,6 +239,9 @@ export class RoomManager {
     if (room.pendingTie) {
       throw new RoomError('Voting is closed — waiting for the tie to be resolved.');
     }
+    if (room.revealed) {
+      throw new RoomError('Voting is closed — the result has been revealed.');
+    }
     if (!room.participants[participantId]) {
       throw new RoomError('You are not a participant of this room.');
     }
@@ -230,44 +254,62 @@ export class RoomManager {
   }
 
   /**
-   * Admin locks in the current match. If the vote is tied, the room enters a
-   * pending-tie state and no winner is chosen until `resolveTie` is called.
-   * Returns the completed match info when a winner was decided.
+   * Step 1 of resolving a match: reveal the votes (closes voting, shows the
+   * result to everyone). A tie parks the room in pending-tie for resolution.
+   * `force` bypasses the "everyone has voted" guard (admin override / timer).
    */
-  advance(roomId: string, actorId: string): {
-    room: Room;
-    completed: { matchId: string; winnerId: string } | null;
-  } {
+  reveal(roomId: string, actorId: string, force = false): { room: Room; tie: boolean } {
     const room = this.requireAdmin(roomId, actorId);
-    return this.resolveByVotes(room);
+    this.doReveal(room, force);
+    return { room, tie: room.pendingTie };
+  }
+
+  /** Reveal driven by the vote timer expiring (no admin action). */
+  autoReveal(roomId: string): { room: Room; revealed: boolean } {
+    const room = this.requireRoom(roomId);
+    if (
+      room.phase !== 'in-progress' ||
+      !room.tournament?.currentMatchId ||
+      room.revealed
+    ) {
+      return { room, revealed: false };
+    }
+    this.doReveal(room, true);
+    return { room, revealed: true };
+  }
+
+  private doReveal(room: Room, force: boolean): void {
+    this.requireActiveMatch(room);
+    if (room.revealed) throw new RoomError('The result is already revealed.');
+    if (!force && !this.allVoted(room)) {
+      throw new RoomError('Not everyone has voted yet.');
+    }
+    room.revealed = true;
+    room.currentDeadline = null; // voting is closed
+    const { a, b } = this.tally(room);
+    if (a === b) room.pendingTie = true;
+    this.touch(room);
   }
 
   /**
-   * Advance driven by the vote timer expiring (no admin action). Same rules as
-   * a manual advance: a tie still parks in pending-tie for the admin to resolve.
+   * Step 2: advance to the next match after a reveal, using the majority vote.
+   * Requires a prior `reveal` and a non-tied result.
    */
-  autoAdvance(roomId: string): {
+  next(roomId: string, actorId: string): {
     room: Room;
-    completed: { matchId: string; winnerId: string } | null;
+    completed: { matchId: string; winnerId: string };
   } {
-    const room = this.requireRoom(roomId);
-    return this.resolveByVotes(room);
-  }
-
-  private resolveByVotes(room: Room): {
-    room: Room;
-    completed: { matchId: string; winnerId: string } | null;
-  } {
+    const room = this.requireAdmin(roomId, actorId);
     const match = this.requireActiveMatch(room);
+    if (!room.revealed) throw new RoomError('Reveal the votes first.');
+    if (room.pendingTie) throw new RoomError('Resolve the tie first.');
     const { a, b } = this.tally(room);
-    if (a === b) {
-      room.pendingTie = true;
-      room.currentDeadline = null; // voting is closed while a tie is pending
-      this.touch(room);
-      return { room, completed: null };
-    }
     const winnerId = (a > b ? match.songAId : match.songBId)!;
-    return this.finishMatch(room, match.id, winnerId, null);
+    this.pushHistory(room);
+    return this.finishMatch(room, match.id, winnerId, null) as {
+      room: Room;
+      completed: { matchId: string; winnerId: string };
+    };
   }
 
   resolveTie(roomId: string, actorId: string, resolution: TieBreakRequest): {
@@ -276,6 +318,9 @@ export class RoomManager {
   } {
     const room = this.requireAdmin(roomId, actorId);
     const match = this.requireActiveMatch(room);
+    if (!room.revealed || !room.pendingTie) {
+      throw new RoomError('This match is not awaiting a tie-break.');
+    }
 
     let winnerSide: 'A' | 'B';
     if (resolution.method === 'coin-flip') {
@@ -287,15 +332,51 @@ export class RoomManager {
       winnerSide = resolution.side;
     }
     const winnerId = (winnerSide === 'A' ? match.songAId : match.songBId)!;
-    const result = this.finishMatch(room, match.id, winnerId, resolution.method);
-    return { room, completed: result.completed! };
+    this.pushHistory(room);
+    return this.finishMatch(room, match.id, winnerId, resolution.method);
+  }
+
+  /**
+   * Admin "go back": un-reveal the current match, or (if not revealed) restore
+   * the previous match from history so a mistaken result can be redone.
+   */
+  goBack(roomId: string, actorId: string): Room {
+    const room = this.requireAdmin(roomId, actorId);
+    if (room.revealed) {
+      // Simply return to the voting state of the current match.
+      room.revealed = false;
+      room.pendingTie = false;
+      this.refreshDeadline(room);
+      this.touch(room);
+      return room;
+    }
+    const previous = room.history.pop();
+    if (!previous) throw new RoomError('There is nothing to undo.');
+    room.tournament = previous;
+    room.phase = 'in-progress';
+    room.currentVotes = {};
+    room.revealed = false;
+    room.pendingTie = false;
+    this.refreshDeadline(room);
+    this.touch(room);
+    return room;
   }
 
   // ---- Snapshots ---------------------------------------------------------
 
-  snapshot(roomId: string): RoomSnapshot {
+  /**
+   * Build a snapshot tailored to a viewer. When votes are hidden and not yet
+   * revealed, the A/B split is redacted server-side for non-admins (so it can't
+   * be read from the wire) — but the number of votes cast stays visible.
+   */
+  snapshot(roomId: string, viewerId?: string): RoomSnapshot {
     const room = this.requireRoom(roomId);
+    const isAdmin = viewerId === room.adminId;
     const { a, b } = this.tally(room);
+    const votedIds = Object.keys(room.currentVotes);
+    const connected = Object.values(room.participants).filter((p) => p.connected);
+    const votesHidden = room.settings.hideVotes && !room.revealed && !isAdmin;
+
     return {
       id: room.id,
       code: room.code,
@@ -304,12 +385,18 @@ export class RoomManager {
       participants: Object.values(room.participants),
       songs: room.songs,
       tournament: room.tournament,
+      settings: room.settings,
       voteTally: {
-        a,
-        b,
-        total: a + b,
-        voters: Object.keys(room.participants).length,
+        a: votesHidden ? 0 : a,
+        b: votesHidden ? 0 : b,
+        votedCount: votedIds.length,
+        voters: connected.length,
+        hidden: votesHidden,
       },
+      votedParticipantIds: votedIds,
+      allVoted: this.allVoted(room),
+      revealed: room.revealed,
+      canGoBack: room.revealed || room.history.length > 0,
       awaitingTieBreak: room.pendingTie,
       voteDurationSeconds: room.voteDurationSeconds,
       deadline: room.currentDeadline,
@@ -340,9 +427,18 @@ export class RoomManager {
     winnerId: string,
     tieBreak: TieBreakRequest['method'] | null,
   ): { room: Room; completed: { matchId: string; winnerId: string } } {
+    // Freeze the vote tally onto the match record before clearing it, so the
+    // bracket and final ranking can show real per-match vote counts.
+    const { a, b } = this.tally(room);
     room.tournament = completeMatch(room.tournament!, matchId, winnerId, tieBreak);
+    const finished = room.tournament.matches[matchId];
+    if (finished) {
+      finished.votesA = a;
+      finished.votesB = b;
+    }
     room.currentVotes = {};
     room.pendingTie = false;
+    room.revealed = false;
     if (room.tournament.status === 'completed') {
       room.phase = 'finished';
     }
@@ -353,17 +449,32 @@ export class RoomManager {
 
   /**
    * Set the current match's voting deadline based on the configured timer.
-   * Cleared whenever there is no live, votable match (finished / tie / no timer).
+   * Cleared whenever voting isn't open (finished / tie / revealed / no timer).
    */
   private refreshDeadline(room: Room): void {
-    const hasLiveMatch =
+    const votingOpen =
       room.phase === 'in-progress' &&
       !room.pendingTie &&
+      !room.revealed &&
       Boolean(room.tournament?.currentMatchId);
     room.currentDeadline =
-      hasLiveMatch && room.voteDurationSeconds
+      votingOpen && room.voteDurationSeconds
         ? Date.now() + room.voteDurationSeconds * 1000
         : null;
+  }
+
+  /** True when every connected participant has cast a vote this match. */
+  private allVoted(room: Room): boolean {
+    const connected = Object.values(room.participants).filter((p) => p.connected);
+    if (connected.length === 0) return false;
+    return connected.every((p) => room.currentVotes[p.id] !== undefined);
+  }
+
+  /** Save the current tournament state so the admin can "go back". */
+  private pushHistory(room: Room): void {
+    if (!room.tournament) return;
+    room.history.push(structuredClone(room.tournament));
+    if (room.history.length > 100) room.history.shift();
   }
 
   private tally(room: Room): { a: number; b: number } {

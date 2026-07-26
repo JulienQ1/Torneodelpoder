@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { RoomSnapshot, TieBreakRequest } from '@/shared/types/room';
+import type { RoomSettings, RoomSnapshot, TieBreakRequest } from '@/shared/types/room';
 import type { ImportResult } from '@/shared/types/socket';
 import { emitAck, getSocket } from './socket';
 import { loadSession } from './session';
@@ -25,8 +25,11 @@ export interface RoomController {
     removeSong: (songId: string) => Promise<void>;
     dedupe: () => Promise<{ removed: number }>;
     setVoteTimer: (seconds: number | null) => Promise<void>;
+    setSettings: (settings: Partial<RoomSettings>) => Promise<void>;
     start: () => Promise<void>;
+    reveal: (force?: boolean) => Promise<void>;
     next: () => Promise<void>;
+    goBack: () => Promise<void>;
     resolveTie: (resolution: TieBreakRequest) => Promise<void>;
     vote: (side: 'A' | 'B') => Promise<void>;
   };
@@ -117,8 +120,19 @@ export function useRoomSocket(roomId: string): RoomController {
         roomId,
         seconds,
       }),
+    setSettings: (settings: Partial<RoomSettings>) =>
+      emitAck<[{ roomId: string; settings: Partial<RoomSettings> }], void>(
+        'room:setSettings',
+        { roomId, settings },
+      ),
     start: () => emitAck<[{ roomId: string }], void>('tournament:start', { roomId }),
+    reveal: (force?: boolean) =>
+      emitAck<[{ roomId: string; force?: boolean }], void>('tournament:reveal', {
+        roomId,
+        force,
+      }),
     next: () => emitAck<[{ roomId: string }], void>('tournament:next', { roomId }),
+    goBack: () => emitAck<[{ roomId: string }], void>('tournament:goBack', { roomId }),
     resolveTie: (resolution: TieBreakRequest) =>
       emitAck<[{ roomId: string; resolution: TieBreakRequest }], void>(
         'tournament:resolveTie',
