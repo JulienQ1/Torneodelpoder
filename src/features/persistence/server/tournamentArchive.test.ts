@@ -26,7 +26,8 @@ function finishedRoom(n: number) {
   while (mgr.snapshot(room.id).phase === 'in-progress') {
     if (guard++ > n * 4) throw new Error('did not finish');
     mgr.castVote(room.id, admin, 'A');
-    mgr.advance(room.id, admin);
+    mgr.reveal(room.id, admin, true); // force: solo admin is the only voter
+    mgr.next(room.id, admin);
   }
   return mgr.getRoom(room.id)!;
 }
@@ -69,7 +70,7 @@ describe('buildArchivePayload', () => {
     const { room, participantId: admin } = mgr.createRoom('A');
     mgr.addSongs(room.id, admin, songs(2)); // single final match
     mgr.start(room.id, admin);
-    mgr.advance(room.id, admin); // 0-0 tie → pending
+    mgr.reveal(room.id, admin, true); // 0-0 tie → pending
     mgr.resolveTie(room.id, admin, { method: 'coin-flip' });
 
     const payload = buildArchivePayload(mgr.getRoom(room.id)!);

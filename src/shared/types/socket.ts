@@ -1,5 +1,5 @@
 import type { Song, SongInput } from './song';
-import type { RoomSnapshot, TieBreakRequest } from './room';
+import type { RoomSettings, RoomSnapshot, TieBreakRequest } from './room';
 
 /**
  * The typed Socket.IO contract shared by client and server.
@@ -71,13 +71,32 @@ export interface ClientToServerEvents {
     ack: (res: Ack) => void,
   ) => void;
 
+  /** Admin updates presentation settings (hide votes/media, bracket visibility). */
+  'room:setSettings': (
+    payload: { roomId: string; settings: Partial<RoomSettings> },
+    ack: (res: Ack) => void,
+  ) => void;
+
   // --- Tournament control (admin only) ---
   'tournament:start': (
     payload: { roomId: string },
     ack: (res: Ack) => void,
   ) => void;
 
+  /** Reveal the current match's votes (step 1). `force` overrides "all voted". */
+  'tournament:reveal': (
+    payload: { roomId: string; force?: boolean },
+    ack: (res: Ack) => void,
+  ) => void;
+
+  /** Advance to the next match after a reveal (step 2). */
   'tournament:next': (
+    payload: { roomId: string },
+    ack: (res: Ack) => void,
+  ) => void;
+
+  /** Undo: un-reveal the current match, or restore the previous match. */
+  'tournament:goBack': (
     payload: { roomId: string },
     ack: (res: Ack) => void,
   ) => void;

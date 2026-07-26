@@ -91,6 +91,34 @@ export function Lobby({
 
         {isAdmin && (
           <Card className="space-y-3 p-4">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+              Suspense &amp; affichage
+            </p>
+            <SettingToggle
+              label="Cacher les votes"
+              hint="Les participants ne voient pas le score avant la révélation."
+              value={snapshot.settings.hideVotes}
+              onChange={(v) => actions.setSettings({ hideVotes: v }).catch(() => undefined)}
+            />
+            <SettingToggle
+              label="Cacher les miniatures"
+              hint="Pochettes floutées côté participant (clic pour révéler)."
+              value={snapshot.settings.hideMedia}
+              onChange={(v) => actions.setSettings({ hideMedia: v }).catch(() => undefined)}
+            />
+            <SettingToggle
+              label="Bracket visible par tous"
+              hint="Sinon, seul l'admin voit l'arbre du tournoi."
+              value={snapshot.settings.bracketVisibleToAll}
+              onChange={(v) =>
+                actions.setSettings({ bracketVisibleToAll: v }).catch(() => undefined)
+              }
+            />
+          </Card>
+        )}
+
+        {isAdmin && (
+          <Card className="space-y-3 p-4">
             <div>
               <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
                 Vote timer
@@ -187,6 +215,44 @@ export function Lobby({
           </Card>
         )}
       </div>
+    </div>
+  );
+}
+
+function SettingToggle({
+  label,
+  hint,
+  value,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  value: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <p className="text-sm text-slate-200">{label}</p>
+        <p className="text-xs text-slate-500">{hint}</p>
+      </div>
+      <button
+        role="switch"
+        aria-checked={value}
+        aria-label={label}
+        onClick={() => onChange(!value)}
+        className={
+          'relative h-6 w-11 flex-none rounded-full transition ' +
+          (value ? 'bg-brand-600' : 'bg-slate-700')
+        }
+      >
+        <span
+          className={
+            'absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ' +
+            (value ? 'left-[22px]' : 'left-0.5')
+          }
+        />
+      </button>
     </div>
   );
 }

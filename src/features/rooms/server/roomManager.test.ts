@@ -65,12 +65,40 @@ describe('RoomManager', () => {
       // Both players vote for side A → clear winner, no tie.
       mgr.castVote(room.id, admin, 'A');
       mgr.castVote(room.id, bob, 'A');
-      const { completed } = mgr.advance(room.id, admin);
+      mgr.reveal(room.id, admin); // everyone voted → no force needed
+      const { completed } = mgr.next(room.id, admin);
       expect(completed).not.toBeNull();
     }
     const snap = mgr.snapshot(room.id);
     expect(snap.phase).toBe('finished');
     expect(snap.tournament!.championId).not.toBeNull();
+  });
+
+  it('reveals votes before advancing; next requires a reveal', () => {
+    const { room, participantId: admin } = mgr.createRoom('Alice');
+    const { participantId: bob } = mgr.joinRoom(room.code, 'Bob');
+    mgr.addSongs(room.id, admin, songs(4));
+    mgr.start(room.id, admin);
+    mgr.castVote(room.id, admin, 'A');
+    mgr.castVote(room.id, bob, 'A');
+    // Cannot advance before revealing.
+    expect(() => mgr.next(room.id, admin)).toThrow(RoomError);
+    mgr.reveal(room.id, admin);
+    expect(mgr.snapshot(room.id).revealed).toBe(true);
+    const { completed } = mgr.next(room.id, admin);
+    expect(completed).not.toBeNull();
+  });
+
+  it('blocks reveal until everyone voted unless forced', () => {
+    const { room, participantId: admin } = mgr.createRoom('Alice');
+    mgr.joinRoom(room.code, 'Bob'); // Bob won't vote
+    mgr.addSongs(room.id, admin, songs(4));
+    mgr.start(room.id, admin);
+    mgr.castVote(room.id, admin, 'A');
+    expect(mgr.snapshot(room.id).allVoted).toBe(false);
+    expect(() => mgr.reveal(room.id, admin)).toThrow(RoomError); // not all voted
+    mgr.reveal(room.id, admin, true); // force
+    expect(mgr.snapshot(room.id).revealed).toBe(true);
   });
 
   it('enters a pending-tie state on an even split and resolves by admin choice', () => {
@@ -81,12 +109,13 @@ describe('RoomManager', () => {
 
     mgr.castVote(room.id, admin, 'A');
     mgr.castVote(room.id, bob, 'B'); // 1-1 tie
-    const { completed } = mgr.advance(room.id, admin);
-    expect(completed).toBeNull();
+    mgr.reveal(room.id, admin);
     expect(mgr.snapshot(room.id).awaitingTieBreak).toBe(true);
 
-    // Voting is blocked while a tie is pending.
+    // Voting is blocked while revealed / a tie is pending.
     expect(() => mgr.castVote(room.id, bob, 'A')).toThrow(RoomError);
+    // next() refuses while tied.
+    expect(() => mgr.next(room.id, admin)).toThrow(RoomError);
 
     const match = mgr.getRoom(room.id)!.tournament!;
     const chosen = match.matches[match.currentMatchId!]!.songBId!;
@@ -99,13 +128,60 @@ describe('RoomManager', () => {
     const { room, participantId: admin } = mgr.createRoom('Alice');
     mgr.addSongs(room.id, admin, songs(2));
     mgr.start(room.id, admin);
-    // 0-0 is a tie too.
-    mgr.advance(room.id, admin);
+    // 0-0 is a tie too — force reveal since nobody voted.
+    mgr.reveal(room.id, admin, true);
+    expect(mgr.snapshot(room.id).awaitingTieBreak).toBe(true);
     const t = mgr.getRoom(room.id)!.tournament!;
     const m = t.matches[t.currentMatchId!]!;
     const options = [m.songAId, m.songBId];
     const res = mgr.resolveTie(room.id, admin, { method: 'coin-flip' });
     expect(options).toContain(res.completed.winnerId);
+  });
+
+  it('go back un-reveals, then restores the previous match', () => {
+    const { room, participantId: admin } = mgr.createRoom('Alice');
+    const { participantId: bob } = mgr.joinRoom(room.code, 'Bob');
+    mgr.addSongs(room.id, admin, songs(4));
+    mgr.start(room.id, admin);
+    const firstMatchId = mgr.getRoom(room.id)!.tournament!.currentMatchId!;
+
+    mgr.castVote(room.id, admin, 'A');
+    mgr.castVote(room.id, bob, 'A');
+    mgr.reveal(room.id, admin);
+    // Go back once → un-reveal, still on the same match.
+    mgr.goBack(room.id, admin);
+    expect(mgr.snapshot(room.id).revealed).toBe(false);
+    expect(mgr.getRoom(room.id)!.tournament!.currentMatchId).toBe(firstMatchId);
+
+    // Complete it, then go back → restores the completed match as active again.
+    mgr.reveal(room.id, admin);
+    mgr.next(room.id, admin);
+    expect(mgr.getRoom(room.id)!.tournament!.currentMatchId).not.toBe(firstMatchId);
+    mgr.goBack(room.id, admin);
+    expect(mgr.getRoom(room.id)!.tournament!.currentMatchId).toBe(firstMatchId);
+    expect(mgr.getRoom(room.id)!.tournament!.matches[firstMatchId]!.status).not.toBe('completed');
+  });
+
+  it('hides the vote split from participants until revealed', () => {
+    const { room, participantId: admin } = mgr.createRoom('Alice');
+    const { participantId: bob } = mgr.joinRoom(room.code, 'Bob');
+    mgr.addSongs(room.id, admin, songs(2));
+    mgr.start(room.id, admin);
+    mgr.castVote(room.id, admin, 'A');
+    mgr.castVote(room.id, bob, 'A');
+
+    const bobView = mgr.snapshot(room.id, bob);
+    expect(bobView.voteTally.hidden).toBe(true);
+    expect(bobView.voteTally.a).toBe(0);
+    expect(bobView.voteTally.votedCount).toBe(2); // progress still visible
+
+    const adminView = mgr.snapshot(room.id, admin);
+    expect(adminView.voteTally.hidden).toBe(false);
+    expect(adminView.voteTally.a).toBe(2);
+
+    mgr.reveal(room.id, admin);
+    expect(mgr.snapshot(room.id, bob).voteTally.hidden).toBe(false);
+    expect(mgr.snapshot(room.id, bob).voteTally.a).toBe(2);
   });
 
   it('promotes a new admin when the admin leaves', () => {
@@ -145,12 +221,12 @@ describe('RoomManager', () => {
     // Force a tie → deadline cleared, pending tie set.
     mgr.castVote(room.id, admin, 'A');
     mgr.castVote(room.id, bob, 'B');
-    mgr.autoAdvance(room.id);
+    mgr.autoReveal(room.id);
     expect(mgr.snapshot(room.id).awaitingTieBreak).toBe(true);
     expect(mgr.snapshot(room.id).deadline).toBeNull();
   });
 
-  it('auto-advances by current votes without an admin actor', () => {
+  it('auto-reveals (does not complete) when the timer expires', () => {
     const { room, participantId: admin } = mgr.createRoom('Alice');
     const { participantId: bob } = mgr.joinRoom(room.code, 'Bob');
     mgr.setVoteTimer(room.id, admin, 15);
@@ -158,7 +234,12 @@ describe('RoomManager', () => {
     mgr.start(room.id, admin);
     mgr.castVote(room.id, admin, 'A');
     mgr.castVote(room.id, bob, 'A');
-    const { completed } = mgr.autoAdvance(room.id);
+    const { revealed } = mgr.autoReveal(room.id);
+    expect(revealed).toBe(true);
+    expect(mgr.snapshot(room.id).revealed).toBe(true);
+    expect(mgr.snapshot(room.id).deadline).toBeNull();
+    // The admin still advances at their own pace.
+    const { completed } = mgr.next(room.id, admin);
     expect(completed).not.toBeNull();
   });
 

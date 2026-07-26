@@ -36,7 +36,7 @@ async function guard<T>(
 ): Promise<void> {
   try {
     const data = await fn();
-    if (broadcast && roomId) emitState(io, roomId);
+    if (broadcast && roomId) await emitState(io, roomId);
     ack({ ok: true, data });
   } catch (err) {
     ack({ ok: false, error: toMessage(err) });
@@ -75,9 +75,10 @@ function reconcileTimer(io: IO, roomId: string): void {
     () => {
       matchTimers.delete(roomId);
       try {
-        const { completed } = roomManager.autoAdvance(roomId);
-        emitState(io, roomId); // also reschedules the next match's timer
-        if (completed) announceCompletion(io, roomId, completed);
+        // Timer expiry reveals the result (voting closed); the admin then
+        // advances at their own pace, preserving the reveal moment.
+        roomManager.autoReveal(roomId);
+        void emitState(io, roomId);
       } catch {
         /* room gone or no active match — nothing to do */
       }
@@ -87,14 +88,21 @@ function reconcileTimer(io: IO, roomId: string): void {
   matchTimers.set(roomId, { deadline, handle });
 }
 
-/** Broadcast the authoritative snapshot to everyone in a room. */
-export function emitState(io: IO, roomId: string): void {
+/**
+ * Broadcast an authoritative snapshot to everyone in a room. Each socket gets
+ * a snapshot tailored to its viewer (admins see hidden votes; participants
+ * don't), so redaction happens server-side and can't be bypassed on the wire.
+ */
+export async function emitState(io: IO, roomId: string): Promise<void> {
   const room = roomManager.getRoom(roomId);
   if (!room) {
     clearRoomTimer(roomId);
     return;
   }
-  io.to(roomId).emit('room:state', roomManager.snapshot(roomId));
+  const sockets = await io.in(roomId).fetchSockets();
+  for (const s of sockets) {
+    s.emit('room:state', roomManager.snapshot(roomId, s.data.participantId));
+  }
   reconcileTimer(io, roomId);
 }
 
@@ -112,7 +120,7 @@ export function registerRoomHandlers(io: IO, socket: IOSocket): void {
         payload.title,
       );
       await join(room.id, participantId);
-      emitState(io, room.id);
+      await emitState(io, room.id);
       return { roomId: room.id, participantId };
     }, false),
   );
@@ -124,7 +132,7 @@ export function registerRoomHandlers(io: IO, socket: IOSocket): void {
         payload.nickname,
       );
       await join(room.id, participantId);
-      emitState(io, room.id);
+      await emitState(io, room.id);
       return { roomId: room.id, participantId };
     }, false),
   );
@@ -133,7 +141,7 @@ export function registerRoomHandlers(io: IO, socket: IOSocket): void {
     guard(io, undefined, ack, async () => {
       roomManager.resume(payload.roomId, payload.participantId);
       await join(payload.roomId, payload.participantId);
-      emitState(io, payload.roomId);
+      await emitState(io, payload.roomId);
       return { roomId: payload.roomId, participantId: payload.participantId };
     }, false),
   );
@@ -145,7 +153,7 @@ export function registerRoomHandlers(io: IO, socket: IOSocket): void {
         const room = roomManager.leaveRoom(payload.roomId, pid);
         await socket.leave(payload.roomId);
         if (room) {
-          emitState(io, payload.roomId);
+          await emitState(io, payload.roomId);
         } else {
           clearRoomTimer(payload.roomId);
           io.to(payload.roomId).emit('room:closed', { reason: 'Room closed.' });
@@ -200,6 +208,12 @@ export function registerRoomHandlers(io: IO, socket: IOSocket): void {
     }),
   );
 
+  socket.on('room:setSettings', (payload, ack) =>
+    guard(io, payload.roomId, ack, () => {
+      roomManager.setSettings(payload.roomId, actor(socket), payload.settings);
+    }),
+  );
+
   // ---- Tournament control -------------------------------------------------
 
   socket.on('tournament:start', (payload, ack) =>
@@ -208,10 +222,22 @@ export function registerRoomHandlers(io: IO, socket: IOSocket): void {
     }),
   );
 
+  socket.on('tournament:reveal', (payload, ack) =>
+    guard(io, payload.roomId, ack, () => {
+      roomManager.reveal(payload.roomId, actor(socket), payload.force ?? false);
+    }),
+  );
+
   socket.on('tournament:next', (payload, ack) =>
     guard(io, payload.roomId, ack, () => {
-      const { completed } = roomManager.advance(payload.roomId, actor(socket));
-      if (completed) announceCompletion(io, payload.roomId, completed);
+      const { completed } = roomManager.next(payload.roomId, actor(socket));
+      announceCompletion(io, payload.roomId, completed);
+    }),
+  );
+
+  socket.on('tournament:goBack', (payload, ack) =>
+    guard(io, payload.roomId, ack, () => {
+      roomManager.goBack(payload.roomId, actor(socket));
     }),
   );
 
@@ -242,7 +268,7 @@ export function registerRoomHandlers(io: IO, socket: IOSocket): void {
     const { roomId, participantId } = socket.data;
     if (roomId && participantId) {
       const room = roomManager.markDisconnected(roomId, participantId);
-      if (room) emitState(io, roomId);
+      if (room) void emitState(io, roomId);
     }
   });
 }
