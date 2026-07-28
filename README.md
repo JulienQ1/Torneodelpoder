@@ -55,12 +55,31 @@ npm run build && npm start
 ```
 
 **No API keys are required** to play: single-track import works through public
-oEmbed endpoints. Keys unlock full *playlist* import:
+oEmbed endpoints, and YouTube *playlists* work too via a best-effort keyless
+scrape. Free keys unlock reliable/official playlist import:
 
 | Variable | Needed for |
 | --- | --- |
-| `YOUTUBE_API_KEY` | Importing full YouTube playlists |
-| `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` | Importing Spotify playlists + richer track metadata |
+| `YOUTUBE_API_KEY` | Reliable, paginated YouTube playlist import (keyless scrape used otherwise) |
+| `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` | Spotify playlist import + richer track metadata |
+
+### Get a free Spotify Client ID & Secret
+
+Spotify playlist import needs credentials (free). Full walkthrough — including
+YouTube — is in **[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md#getting-free-api-keys)**.
+
+1. Open the **Spotify Developer Dashboard**: <https://developer.spotify.com/dashboard> and log in.
+2. **Create app** → any name/description. For **Redirect URI** enter any valid URL
+   (e.g. `http://localhost:3000`) — this app uses the Client Credentials flow and
+   doesn't use it. Accept the terms → **Save**.
+3. Open the app → **Settings** → copy the **Client ID** and **Client secret**.
+4. Put them in your `.env` (local) or your host's env variables (e.g. Railway):
+   ```
+   SPOTIFY_CLIENT_ID=...your_client_id
+   SPOTIFY_CLIENT_SECRET=...your_client_secret
+   ```
+
+Keep these secret — never commit them. Restart / redeploy after setting them.
 
 ---
 
