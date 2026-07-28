@@ -41,6 +41,8 @@ COPY --from=build /app/tsconfig.json ./tsconfig.json
 COPY --from=build /app/server ./server
 COPY --from=build /app/src ./src
 COPY --from=build /app/prisma ./prisma
+# `npm start` runs scripts/dbpush.mjs (auto schema push) before the server.
+COPY --from=build /app/scripts ./scripts
 
 # The host provides PORT; the server binds 0.0.0.0 by default.
 EXPOSE 3000
