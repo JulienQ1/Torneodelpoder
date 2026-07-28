@@ -117,7 +117,7 @@ Enables Spotify playlist import and richer track metadata. Also free.
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `PORT` | provided by host | Port to listen on (defaults to 3000) |
-| `DATABASE_URL` | optional | Enables tournament history persistence |
+| `DATABASE_URL` | optional | Enables tournament history and saved/shareable playlists |
 | `YOUTUBE_API_KEY` | optional | Full YouTube playlist import |
 | `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` | optional | Spotify playlist import + richer metadata |
 

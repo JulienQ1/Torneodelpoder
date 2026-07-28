@@ -65,6 +65,18 @@ export interface ClientToServerEvents {
     ack: (res: Ack<{ removed: number }>) => void,
   ) => void;
 
+  /** Admin saves the room's current songs as a reusable playlist. */
+  'playlist:save': (
+    payload: { roomId: string; name?: string },
+    ack: (res: Ack<{ code: string }>) => void,
+  ) => void;
+
+  /** Admin loads a saved playlist (by code) into the lobby. */
+  'playlist:load': (
+    payload: { roomId: string; code: string },
+    ack: (res: Ack<ImportResult>) => void,
+  ) => void;
+
   /** Admin sets (or clears with null) the per-match vote time limit. Lobby only. */
   'room:setVoteTimer': (
     payload: { roomId: string; seconds: number | null },

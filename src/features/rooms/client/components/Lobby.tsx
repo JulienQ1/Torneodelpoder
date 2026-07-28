@@ -5,6 +5,7 @@ import type { RoomSnapshot } from '@/shared/types/room';
 import type { RoomController } from '../useRoomSocket';
 import { Button, Card } from '@/shared/components/ui';
 import { SongImporter } from './SongImporter';
+import { PlaylistTools } from './PlaylistTools';
 import { SongList } from './SongList';
 import { ParticipantList } from './ParticipantList';
 import { SuddenDeathPreview } from './SuddenDeathPreview';
@@ -71,6 +72,14 @@ export function Lobby({
             Waiting for the admin to add songs and start the tournament. Sit
             tight — you’ll vote live once it begins.
           </Card>
+        )}
+
+        {isAdmin && (
+          <PlaylistTools
+            songCount={snapshot.songs.length}
+            onSave={actions.savePlaylist}
+            onLoad={actions.loadPlaylist}
+          />
         )}
 
         <SongList

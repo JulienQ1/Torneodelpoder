@@ -170,6 +170,12 @@ export class RoomManager {
     return room;
   }
 
+  /** The room's current songs (admin only), for saving as a playlist. */
+  playlistSongs(roomId: string, actorId: string): Song[] {
+    const room = this.requireAdmin(roomId, actorId);
+    return room.songs;
+  }
+
   dedupe(roomId: string, actorId: string): { removed: number } {
     const room = this.requireAdmin(roomId, actorId);
     const { deduped, removed } = dedupeSongs(room.songs);
