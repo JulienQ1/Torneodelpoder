@@ -26,13 +26,17 @@ build, plus a **`railway.json`** for Railway.
    - Railway injects `PORT`; the server already reads `process.env.PORT` and binds `0.0.0.0`, so no change is needed.
    - WebSockets work over the generated HTTPS domain out of the box.
 
-3. **(Optional) Postgres for history**
+3. **(Optional) Postgres for history + saved playlists**
    - **New → Database → Add PostgreSQL**.
-   - Railway exposes `DATABASE_URL` to the service automatically. On first boot run the schema push once (Railway shell or a one-off command):
-     ```bash
-     npm run db:push
-     ```
-   - Without `DATABASE_URL` the app runs fine; `/history` simply shows an empty state.
+   - **Link it to the app service**: open the app service → **Variables** → **New
+     Variable** → add `DATABASE_URL` with value `${{Postgres.DATABASE_URL}}`
+     (Railway offers it as a reference). This is what connects the app to the DB.
+   - **Schema is applied automatically**: on start, `npm start` runs
+     `prisma db push` whenever `DATABASE_URL` is set — no manual step. (You can
+     still run `npm run db:push` yourself, e.g. via the Railway CLI:
+     `railway run npm run db:push`.)
+   - Without `DATABASE_URL` the app runs fine; `/history` and saved playlists
+     just aren't available.
 
 4. **(Optional) Playlist import keys** — set as service variables (see
    [Getting free API keys](#getting-free-api-keys) below for step-by-step):
