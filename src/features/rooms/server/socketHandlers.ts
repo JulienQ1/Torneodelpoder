@@ -8,6 +8,11 @@ import type {
 import { ImportService } from '@/features/import/server/importService';
 import { ProviderError } from '@/features/import/server/provider';
 import { archiveRoom } from '@/features/persistence/server/tournamentArchive';
+import {
+  loadPlaylist,
+  PlaylistError,
+  savePlaylist,
+} from '@/features/persistence/server/playlistStore';
 import { RoomError, roomManager } from './roomManager';
 
 type IO = Server<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>;
@@ -17,7 +22,9 @@ const importService = new ImportService();
 
 /** Turn any thrown value into a safe user-facing message. */
 function toMessage(err: unknown): string {
-  if (err instanceof RoomError || err instanceof ProviderError) return err.message;
+  if (err instanceof RoomError || err instanceof ProviderError || err instanceof PlaylistError) {
+    return err.message;
+  }
   if (err instanceof Error) {
     // Log the real error server-side; show a generic message to users.
     console.error('[socket] unexpected error:', err);
@@ -205,6 +212,22 @@ export function registerRoomHandlers(io: IO, socket: IOSocket): void {
   socket.on('room:setVoteTimer', (payload, ack) =>
     guard(io, payload.roomId, ack, () => {
       roomManager.setVoteTimer(payload.roomId, actor(socket), payload.seconds);
+    }),
+  );
+
+  socket.on('playlist:save', (payload, ack) =>
+    guard(io, undefined, ack, async () => {
+      const songs = roomManager.playlistSongs(payload.roomId, actor(socket));
+      return savePlaylist(songs, payload.name ?? '');
+    }, false),
+  );
+
+  socket.on('playlist:load', (payload, ack) =>
+    guard(io, payload.roomId, ack, async () => {
+      const info = await loadPlaylist(payload.code);
+      if (!info) throw new RoomError('No saved playlist found for that code.');
+      const res = roomManager.addSongs(payload.roomId, actor(socket), info.songs);
+      return { added: res.added, duplicatesSkipped: res.duplicatesSkipped };
     }),
   );
 

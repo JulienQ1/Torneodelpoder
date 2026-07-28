@@ -24,6 +24,8 @@ export interface RoomController {
     addPlaylist: (url: string) => Promise<ImportResult>;
     removeSong: (songId: string) => Promise<void>;
     dedupe: () => Promise<{ removed: number }>;
+    savePlaylist: (name?: string) => Promise<{ code: string }>;
+    loadPlaylist: (code: string) => Promise<ImportResult>;
     setVoteTimer: (seconds: number | null) => Promise<void>;
     setSettings: (settings: Partial<RoomSettings>) => Promise<void>;
     start: () => Promise<void>;
@@ -115,6 +117,16 @@ export function useRoomSocket(roomId: string): RoomController {
       }),
     dedupe: () =>
       emitAck<[{ roomId: string }], { removed: number }>('songs:dedupe', { roomId }),
+    savePlaylist: (name?: string) =>
+      emitAck<[{ roomId: string; name?: string }], { code: string }>('playlist:save', {
+        roomId,
+        name,
+      }),
+    loadPlaylist: (code: string) =>
+      emitAck<[{ roomId: string; code: string }], ImportResult>('playlist:load', {
+        roomId,
+        code,
+      }),
     setVoteTimer: (seconds: number | null) =>
       emitAck<[{ roomId: string; seconds: number | null }], void>('room:setVoteTimer', {
         roomId,

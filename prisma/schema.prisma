@@ -85,6 +85,22 @@ model Song {
   @@index([title])
 }
 
+/**
+ * A reusable, named playlist saved from a lobby and shared via a short code.
+ * The song list is stored as a self-contained JSON snapshot (Song[]), so
+ * loading it needs no re-import and no provider API keys.
+ */
+model SavedPlaylist {
+  id        String   @id @default(cuid())
+  code      String   @unique // short shareable code, e.g. "AB12CD7Q"
+  name      String
+  songs     Json // Song[] snapshot
+  songCount Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 model FavoriteSong {
   userId    String
   songId    String
