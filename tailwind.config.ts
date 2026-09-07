@@ -22,6 +22,11 @@ const config: Config = {
       fontFamily: {
         sans: ['ui-sans-serif', 'system-ui', 'sans-serif'],
       },
+      // Tailwind v4 ships `rounded-4xl` out of the box; React Bits components
+      // (e.g. Stepper) use it, so v3 needs it declared.
+      borderRadius: {
+        '4xl': '2rem',
+      },
       keyframes: {
         'fade-in': {
           '0%': { opacity: '0', transform: 'translateY(4px)' },
