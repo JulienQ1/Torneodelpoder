@@ -67,10 +67,21 @@ spring easings). v4 is ESM-first and tree-shakeable.
 
 ## 5. bklit — <https://bklit.com>
 
-Sent by Julien as part of the bank. The sandbox this was catalogued in blocks
-outbound traffic to the domain, so it is recorded here unannotated rather than
-described from memory — **fill in what it is on the next pass** (or tell Claude
-and it will complete the entry).
+Landing-page templates (per Julien — the domain was unreachable from the
+sandbox where this entry was written, so the details below are the shape of the
+resource, not a verified inventory).
+
+- Best for: the one page in this app that is a landing page —
+  [`src/app/page.tsx`](../src/app/page.tsx), the create/join screen. Structure
+  and copy layout to lift; the room, bracket and history views are product UI
+  and won't map onto a marketing template.
+- Install: templates are whole-page, so treat them as a reference to rebuild
+  from rather than a paste target — this app is a single Next.js page with a
+  Socket.IO create/join flow, not a static site. Keep the existing
+  `Button`/`Card`/`Input` primitives from `src/shared/components/ui.tsx`.
+- Licence: check on the site before shipping anything from it — page templates
+  more often carry a per-use or commercial licence than the component libraries
+  above.
 
 ---
 
