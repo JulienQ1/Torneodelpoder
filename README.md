@@ -130,10 +130,11 @@ transport or UI):
 server/                     Custom Node server: Next.js + Socket.IO
 prisma/schema.prisma        Persistence design (future features)
 src/
-  app/                      Next.js App Router (landing + room pages)
+  app/                      Next.js App Router (landing + room pages, /ui gallery)
   shared/
     types/                  Song, Tournament, Room, Socket contract
     lib/ components/        cn(), formatters, reusable UI kit
+      components/reactbits/ Vendored React Bits animations (see its README)
   features/
     tournament/
       domain/               ⭐ Pure engine: suddenDeath, bracket, random (+tests)
@@ -155,6 +156,7 @@ src/
 | Live state | In-memory `RoomManager` | Ephemeral, vote-heavy rooms want instant, race-free updates |
 | Persistence | PostgreSQL + Prisma (schema included) | Additive home for accounts, history, stats — never in the vote loop |
 | Tests | Vitest | Fast, TS-native, great for the pure engine |
+| Motion | [React Bits](https://reactbits.dev) (vendored) + `motion`, `gsap`, `ogl` | Copy-paste components we own and can tune; browse them at `/ui` |
 
 ---
 
