@@ -32,3 +32,6 @@ next-env.d.ts
 
 # vitest
 /.vitest
+
+# superpowers brainstorming runtime session files
+.superpowers/
